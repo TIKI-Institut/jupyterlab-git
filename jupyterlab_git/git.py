@@ -4,7 +4,7 @@ Module for executing git commands, sending results back to the handlers
 import os
 import re
 import subprocess
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 import pexpect
 import tornado
@@ -736,6 +736,26 @@ class Git:
             return {"code": code, "command": " ".join(cmd), "message": error}
         return {"code": code}
 
+    # TODO (TIKIDSP-985) correct/improve this method
+    @staticmethod
+    def add_access_token(path: str):
+        """
+        Adds an oauth2 token to the url
+        """
+        api_name = path.split("@")[1].split(".")[0]  # TODO (TIKIDSP-985) check and maybe improve this line!
+        with open(os.path.join(os.environ["BROKER_TOKEN_PATH"], api_name), 'r') as inFile:
+            broker_token = inFile.read()
+
+        parsed = urlparse(path)
+        if api_name == "bitbucket":
+            replaced = parsed._replace(netloc="{}:{}@{}".format("x-token-auth", broker_token, parsed.hostname))
+            return replaced.geturl()
+        elif api_name == "gitlab":
+            replaced = parsed._replace(netloc="{}:{}@{}".format("oauth2", broker_token, parsed.hostname))
+            return replaced.geturl()
+        else:
+            return path
+
     async def pull(self, curr_fb_path, auth=None, cancel_on_conflict=False):
         """
         Execute git pull --no-commit.  Disables prompts for the password to avoid the terminal hanging while waiting
@@ -752,6 +772,7 @@ class Git:
                 env=env,
             )
         else:
+            curr_fb_path = Git.add_access_token(curr_fb_path)
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, output, error = await execute(
                 ["git", "pull", "--no-commit"],
@@ -795,6 +816,7 @@ class Git:
                 env=env,
             )
         else:
+            curr_fb_path = Git.add_access_token(curr_fb_path)
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, _, error = await execute(
                 ["git", "push", remote, branch],

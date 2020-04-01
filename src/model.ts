@@ -730,6 +730,9 @@ export class GitExtension implements IGitExtension {
 
   /** Make request for the Git Pull API. */
   async pull(auth?: Git.IAuth): Promise<Git.IPushPullResult> {
+
+    console.log("This is a git pull! Message from TIKI!");
+
     await this.ready;
     const path = this.pathRepository;
 
