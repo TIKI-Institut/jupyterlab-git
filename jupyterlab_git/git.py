@@ -772,7 +772,7 @@ class Git:
                 env=env,
             )
         else:
-            curr_fb_path = Git.add_access_token(curr_fb_path)
+            # curr_fb_path = Git.add_access_token(curr_fb_path)
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, output, error = await execute(
                 ["git", "pull", "--no-commit"],
