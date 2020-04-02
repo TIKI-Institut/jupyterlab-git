@@ -746,7 +746,9 @@ class Git:
         """
         Adds an oauth2 token to the url
         """
+        print("Add access Token - to path: {}".format(path))
         api_name = path.split("@")[1].split(".")[0]  # TODO (TIKIDSP-985) check and maybe improve this line!
+        print("Add access Token - extracted api_name: {}".format(api_name))
         with open(os.path.join(os.environ["BROKER_TOKEN_PATH"], api_name), 'r') as inFile:
             broker_token = inFile.read()
         parsed = urlparse(path)
