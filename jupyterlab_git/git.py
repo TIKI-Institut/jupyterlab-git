@@ -741,25 +741,35 @@ class Git:
             return {"code": code, "command": " ".join(cmd), "message": error}
         return {"code": code}
 
-    @staticmethod
-    def add_access_token(path):
+    async def change_access_token(self, curr_fb_path, env):
         """
-        Adds an oauth2 token to the url
+        changes used token in the url of the .git/config within the repository
         """
-        print("Add access Token - to path: {}".format(path))
-        api_name = path.split("@")[1].split(".")[0]  # TODO (TIKIDSP-985) check and maybe improve this line!
-        print("Add access Token - extracted api_name: {}".format(api_name))
+        # At first get remote url from repository. Example: https://oauth2:abc..123@gitlab.com/username/repo
+        code, output, error = await execute(
+            ["git", "config", "--get", "remote.origin.url"],
+            env=env,
+            cwd=os.path.join(self.root_dir, curr_fb_path),
+        )
+
+        # Extract used api and read in new token
+        api_name = output.split("@")[1].split(".")[0]
         with open(os.path.join(os.environ["BROKER_TOKEN_PATH"], api_name), 'r') as inFile:
             broker_token = inFile.read()
-        parsed = urlparse(path)
+        parsed = urlparse(output)
         if api_name == "bitbucket":
-            replaced = parsed._replace(netloc="{}:{}@{}".format("x-token-auth", broker_token, parsed.hostname))
-            return replaced.geturl()
+            replaced = parsed._replace(netloc="{}:{}@{}".format("x-token-auth", broker_token, parsed.hostname)).geturl()
         elif api_name == "gitlab":
-            replaced = parsed._replace(netloc="{}:{}@{}".format("oauth2", broker_token, parsed.hostname))
-            return replaced.geturl()
+            replaced = parsed._replace(netloc="{}:{}@{}".format("oauth2", broker_token, parsed.hostname)).geturl()
         else:
-            return path
+            replaced = output
+
+        # replace url with new token
+        code, output, error = await execute(
+            ["git", "remote", "set-url", "origin", replaced],
+            env=env,
+            cwd=os.path.join(self.root_dir, curr_fb_path),
+        )
 
     async def pull(self, curr_fb_path, auth=None, cancel_on_conflict=False):
         """
@@ -777,7 +787,7 @@ class Git:
                 env=env,
             )
         else:
-            curr_fb_path = Git.add_access_token(curr_fb_path)
+            await self.change_access_token(curr_fb_path, env)
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, output, error = await execute(
                 ["git", "pull", "--no-commit"],
@@ -821,7 +831,7 @@ class Git:
                 env=env,
             )
         else:
-            curr_fb_path = Git.add_access_token(curr_fb_path)
+            await self.change_access_token(curr_fb_path, env)
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, _, error = await execute(
                 ["git", "push", remote, branch],
