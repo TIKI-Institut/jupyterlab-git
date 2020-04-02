@@ -766,7 +766,7 @@ class Git:
 
         # replace url with new token
         code, output, error = await execute(
-            ["git", "remote", "set-url", "origin", replaced],
+            ["git", "remote", "set-url", "origin", replaced.rstrip("\n")],
             env=env,
             cwd=os.path.join(self.root_dir, curr_fb_path),
         )
