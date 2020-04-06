@@ -751,6 +751,7 @@ class Git:
             env=env,
             cwd=os.path.join(self.root_dir, curr_fb_path),
         )
+        output = output.rstrip("\n")
 
         # Extract used api and read in new token
         try:
@@ -796,13 +797,13 @@ class Git:
             )
         else:
             # Add access token to url and return message if something went wrong
+            env["GIT_TERMINAL_PROMPT"] = "0"
             code, url, error = await self.add_access_token(curr_fb_path, env)
             if code != 0:
                 response["code"] = code
                 response["message"] = error.strip()
                 return response
 
-            env["GIT_TERMINAL_PROMPT"] = "0"
             code, output, error = await execute(
                 ["git", "pull", "--no-commit", url],
                 env=env,
@@ -847,13 +848,13 @@ class Git:
             )
         else:
             # Add access token to url and return message if something went wrong
+            env["GIT_TERMINAL_PROMPT"] = "0"
             code, url, error = await self.add_access_token(curr_fb_path, env)
             if code != 0:
                 response["code"] = code
                 response["message"] = error.strip()
                 return response
 
-            env["GIT_TERMINAL_PROMPT"] = "0"
             code, _, error = await execute(
                 ["git", "push", url, branch],
                 env=env,
