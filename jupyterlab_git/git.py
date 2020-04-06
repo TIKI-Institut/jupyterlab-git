@@ -754,7 +754,7 @@ class Git:
         )
 
         # Extract used api and read in new token
-        api_name = output.split("@")[1].split(".")[0]
+        api_name = output.split("://")[1].split(".")[0]
         with open(os.path.join(os.environ["BROKER_TOKEN_PATH"], api_name), 'r') as inFile:
             broker_token = inFile.read()
         parsed = urlparse(output)
