@@ -741,35 +741,49 @@ class Git:
             return {"code": code, "command": " ".join(cmd), "message": error}
         return {"code": code}
 
-    # TODO: Remove rewriting git config url! Do this once directly after cloning!!
     async def add_access_token(self, curr_fb_path, env):
         """
         changes used token in the url of the .git/config within the repository
         """
         # At first get remote url from repository. Example: https://oauth2:abc..123@gitlab.com/username/repo
         code, output, error = await execute(
-            ["git", "config", "--get", "remote.origin.url"],  # TODO looks hacky
+            ["git", "config", "--get", "remote.origin.url"],
             env=env,
             cwd=os.path.join(self.root_dir, curr_fb_path),
         )
 
         # Extract used api and read in new token
-        api_name = output.split("://")[1].split(".")[0]
-        with open(os.path.join(os.environ["BROKER_TOKEN_PATH"], api_name), 'r') as inFile:
-            broker_token = inFile.read()
-        parsed = urlparse(output)
-        if api_name == "bitbucket":
-            return parsed._replace(netloc="{}:{}@{}".format("x-token-auth", broker_token, parsed.hostname)).geturl()
-        elif api_name == "gitlab":
-            return parsed._replace(netloc="{}:{}@{}".format("oauth2", broker_token, parsed.hostname)).geturl()
+        try:
+            api_name = output.split("://")[1].split(".")[0]
+        except IndexError as e:
+            message = "Either the folder you want to push is not a git repository or the git config has not set a remote.origin.url!"
+            return 1, output, message
+        except:
+            return 1, output, "Could not identify error for splitting string!"
         else:
-            return output
+            try:
+                with open(os.path.join(os.environ["BROKER_TOKEN_PATH"], api_name), 'r') as inFile:
+                    broker_token = inFile.read()
+            except FileNotFoundError:
+                message = "Given api is not supported or connected to your account!"
+                return 1, output, message
+            except:
+                return 1, output, "Could not identiy error for reading file!"
+            else:
+                parsed = urlparse(output)
+                if api_name == "bitbucket":
+                    return code, parsed._replace(netloc="{}:{}@{}".format("x-token-auth", broker_token, parsed.hostname)).geturl(), error
+                elif api_name == "gitlab":
+                    return code, parsed._replace(netloc="{}:{}@{}".format("oauth2", broker_token, parsed.hostname)).geturl(), error
+                else:
+                    return code, output, error
 
     async def pull(self, curr_fb_path, auth=None, cancel_on_conflict=False):
         """
         Execute git pull --no-commit.  Disables prompts for the password to avoid the terminal hanging while waiting
         for auth.
         """
+        response = {}
         env = os.environ.copy()
         if auth:
             env["GIT_TERMINAL_PROMPT"] = "1"
@@ -781,7 +795,13 @@ class Git:
                 env=env,
             )
         else:
-            url = await self.add_access_token(curr_fb_path, env)
+            # Add access token to url and return message if something went wrong
+            code, url, error = await self.add_access_token(curr_fb_path, env)
+            if code != 0:
+                response["code"] = code
+                response["message"] = error.strip()
+                return response
+
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, output, error = await execute(
                 ["git", "pull", "--no-commit", url],
@@ -789,7 +809,7 @@ class Git:
                 cwd=os.path.join(self.root_dir, curr_fb_path),
             )
 
-        response = {"code": code}
+        response["code"] = code
 
         if code != 0:
             output = output.strip()
@@ -814,6 +834,7 @@ class Git:
         """
         Execute `git push $UPSTREAM $BRANCH`. The choice of upstream and branch is up to the caller.
         """
+        response = {}
         env = os.environ.copy()
         if auth:
             env["GIT_TERMINAL_PROMPT"] = "1"
@@ -825,7 +846,13 @@ class Git:
                 env=env,
             )
         else:
-            url = await self.add_access_token(curr_fb_path, env)
+            # Add access token to url and return message if something went wrong
+            code, url, error = await self.add_access_token(curr_fb_path, env)
+            if code != 0:
+                response["code"] = code
+                response["message"] = error.strip()
+                return response
+
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, _, error = await execute(
                 ["git", "push", url, branch],
@@ -833,7 +860,7 @@ class Git:
                 cwd=os.path.join(self.root_dir, curr_fb_path),
             )
 
-        response = {"code": code}
+        response["code"] = code
 
         if code != 0:
             response["message"] = error.strip()
