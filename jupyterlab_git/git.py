@@ -781,10 +781,10 @@ class Git:
                 env=env,
             )
         else:
-            await self.add_access_token(curr_fb_path, env)
+            url = await self.add_access_token(curr_fb_path, env)
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, output, error = await execute(
-                ["git", "pull", "--no-commit"],
+                ["git", "pull", "--no-commit", url],
                 env=env,
                 cwd=os.path.join(self.root_dir, curr_fb_path),
             )
@@ -825,10 +825,10 @@ class Git:
                 env=env,
             )
         else:
-            await self.add_access_token(curr_fb_path, env)
+            url = await self.add_access_token(curr_fb_path, env)
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, _, error = await execute(
-                ["git", "push", remote, branch],
+                ["git", "push", url, branch],
                 env=env,
                 cwd=os.path.join(self.root_dir, curr_fb_path),
             )
