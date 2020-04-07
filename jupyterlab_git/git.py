@@ -6,6 +6,7 @@ import re
 import subprocess
 from urllib.parse import unquote, urlparse
 
+import requests
 import pexpect
 import tornado
 
@@ -740,6 +741,7 @@ class Git:
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
         return {"code": code}
+        # update broker token (i.e. bitbucket token) in BROKER_TOKEN_PATH
 
     async def add_access_token(self, curr_fb_path, env):
         """
@@ -763,13 +765,15 @@ class Git:
             return 1, output, "Could not identify error for splitting string!"
         else:
             try:
-                with open(os.path.join(os.environ["BROKER_TOKEN_PATH"], api_name), 'r') as inFile:
-                    broker_token = inFile.read()
-            except FileNotFoundError:
-                message = "Given api is not supported or connected to your account!"
-                return 1, output, message
+                # get broker token from keycloak
+                r = requests.get("http://{}:8081/dsp/auth/{}_token".format(os.environ["JUPYTERHUB_SERVICE_HOST"], api_name),
+                             headers={
+                                 'Authorization': 'token %s' % os.environ["JPY_API_TOKEN"]
+                             })
+                broker_token = r.json()
+                assert broker_token != ""
             except:
-                return 1, output, "Could not identiy error for reading file!"
+                return 0, output, "Could not fetch broker token, user must type in credentials!"
             else:
                 parsed = urlparse(output)
                 if api_name == "bitbucket":
@@ -784,7 +788,6 @@ class Git:
         Execute git pull --no-commit.  Disables prompts for the password to avoid the terminal hanging while waiting
         for auth.
         """
-        response = {}
         env = os.environ.copy()
         if auth:
             env["GIT_TERMINAL_PROMPT"] = "1"
@@ -800,8 +803,7 @@ class Git:
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, url, error = await self.add_access_token(curr_fb_path, env)
             if code != 0:
-                response["code"] = code
-                response["message"] = error.strip()
+                response = {"code": code, "message": error.strip()}
                 return response
 
             code, output, error = await execute(
@@ -810,7 +812,7 @@ class Git:
                 cwd=os.path.join(self.root_dir, curr_fb_path),
             )
 
-        response["code"] = code
+        response = {"code": code}
 
         if code != 0:
             output = output.strip()
@@ -835,7 +837,7 @@ class Git:
         """
         Execute `git push $UPSTREAM $BRANCH`. The choice of upstream and branch is up to the caller.
         """
-        response = {}
+
         env = os.environ.copy()
         if auth:
             env["GIT_TERMINAL_PROMPT"] = "1"
@@ -851,8 +853,7 @@ class Git:
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, url, error = await self.add_access_token(curr_fb_path, env)
             if code != 0:
-                response["code"] = code
-                response["message"] = error.strip()
+                response = {"code": code, "message": error.strip()}
                 return response
 
             code, _, error = await execute(
@@ -861,7 +862,7 @@ class Git:
                 cwd=os.path.join(self.root_dir, curr_fb_path),
             )
 
-        response["code"] = code
+        response = {"code": code}
 
         if code != 0:
             response["message"] = error.strip()
