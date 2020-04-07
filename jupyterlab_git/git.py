@@ -757,7 +757,7 @@ class Git:
 
         # Extract used api and read in new token
         try:
-            api_name = output.split("://")[1].split(".")[0]
+            api_name = output.split("://")[1].split("@")[1].split(".")[0]
         except IndexError as e:
             message = "Either the folder you want to push is not a git repository or the git config has not set a remote.origin.url!"
             return 1, output, message
