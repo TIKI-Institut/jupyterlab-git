@@ -8,7 +8,19 @@ export const actionButtonStyle = style({
   padding: '0px 4px',
   width: '16px',
   border: 'none',
-  outline: 'none'
+  outline: 'none',
+  cursor: 'pointer',
+
+  $nest: {
+    '&:active': {
+      transform: 'scale(1.272019649)',
+      overflow: 'hidden'
+    },
+
+    '&:disabled': {
+      cursor: 'default'
+    }
+  }
 });
 
 export const hiddenButtonStyle = style({

@@ -12,6 +12,7 @@ import { ISignal, Signal } from '@phosphor/signaling';
 import { httpGitRequest } from './git';
 import { IGitExtension, Git } from './tokens';
 import { decodeStage } from './utils';
+import { Dialog, showErrorMessage } from '@jupyterlab/apputils';
 
 // Default refresh interval (in milliseconds) for polling the current Git status (NOTE: this value should be the same value as in the plugin settings schema):
 const DEFAULT_REFRESH_INTERVAL = 3000; // ms
@@ -33,6 +34,11 @@ export class GitExtension implements IGitExtension {
       })
       .catch(reason => {
         console.error(`Fail to get the server root path.\n${reason}`);
+        showErrorMessage(
+          'Internal Error:',
+          `Fail to get the server root path.\n\n${reason}`,
+          [Dialog.warnButton({ label: 'DISMISS' })]
+        );
       });
 
     let interval: number;
@@ -260,6 +266,8 @@ export class GitExtension implements IGitExtension {
         const data = await response.json();
         throw new ServerConnection.ResponseError(response, data.message);
       }
+
+      this.refreshStatus();
       return response.json();
     } catch (err) {
       throw new ServerConnection.NetworkError(err);
@@ -293,6 +301,7 @@ export class GitExtension implements IGitExtension {
         const data = await response.json();
         throw new ServerConnection.ResponseError(response, data.message);
       }
+
       this.refreshStatus();
       return response.json();
     } catch (err) {
@@ -520,6 +529,8 @@ export class GitExtension implements IGitExtension {
       }
 
       this.refreshStatus();
+      this._headChanged.emit();
+
       return response;
     } catch (err) {
       throw new ServerConnection.NetworkError(err);
@@ -564,12 +575,12 @@ export class GitExtension implements IGitExtension {
   }
 
   /**
-   * Make request to delete changes from selected commit
+   * Make request to revert changes from selected commit
    *
    * @param message Commit message to use for the new repository state
    * @param commitId Selected commit ID
    */
-  async deleteCommit(message: string, commitId: string): Promise<Response> {
+  async revertCommit(message: string, commitId: string): Promise<Response> {
     await this.ready;
     const path = this.pathRepository;
 
@@ -797,7 +808,7 @@ export class GitExtension implements IGitExtension {
   }
 
   /**
-   * General git refresh
+   * General Git refresh
    */
   async refresh(): Promise<void> {
     await this.refreshBranch();
@@ -805,7 +816,7 @@ export class GitExtension implements IGitExtension {
   }
 
   /**
-   * Make request for a list of all git branches
+   * Make request for a list of all Git branches
    */
   async refreshBranch(): Promise<void> {
     const response = await this._branch();
@@ -825,7 +836,7 @@ export class GitExtension implements IGitExtension {
   }
 
   /**
-   * Request git status refresh
+   * Request Git status refresh
    */
   async refreshStatus(): Promise<void> {
     await this.ready;
@@ -1017,10 +1028,22 @@ export class GitExtension implements IGitExtension {
   private async _getServerRoot(): Promise<string> {
     try {
       const response = await httpGitRequest('/git/server_root', 'GET', null);
+      if (response.status === 404) {
+        throw new ServerConnection.ResponseError(
+          response,
+          'Git server extension is unavailable. Please ensure you have installed the ' +
+            'JupyterLab Git server extension by running: pip install --upgrade jupyterlab-git. ' +
+            'To confirm that the server extension is installed, run: jupyter serverextension list.'
+        );
+      }
       const data = await response.json();
       return data['server_root'];
-    } catch (reason) {
-      throw new Error(reason);
+    } catch (error) {
+      if (error instanceof ServerConnection.ResponseError) {
+        throw error;
+      } else {
+        throw new Error(error);
+      }
     }
   }
 
