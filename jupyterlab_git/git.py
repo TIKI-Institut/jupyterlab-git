@@ -755,9 +755,19 @@ class Git:
         )
         output = output.rstrip("\n")
 
+        # if @ is in remote url, we remove token from the url
+        if "@" in output:
+            parsed = urlparse(output)
+            output = parsed._replace(netloc=parsed.hostname).geturl()
+            code, _, error = await execute(
+                ["git", "remote", "set-url", "origin", output],
+                env=env,
+                cwd=os.path.join(self.root_dir, curr_fb_path))
+
+
         # Extract used api and read in new token
         try:
-            api_name = output.split("://")[1].split("@")[1].split(".")[0]
+            api_name = output.split("://")[1].split(".")[0]
         except IndexError as e:
             message = "Either the folder you want to push is not a git repository or the git config has not set a remote.origin.url!"
             return 1, output, message
@@ -773,9 +783,7 @@ class Git:
                 broker_token = r.json()
                 assert broker_token != ""
             except:
-                parsed = urlparse(output)
-                # remove token from url
-                return 0, parsed._replace(netloc=parsed.hostname).geturl(), "Could not fetch broker token, user must type in credentials!"
+                return 0, output, "Could not fetch broker token, user must type in credentials!"
             else:
                 parsed = urlparse(output)
                 if api_name == "bitbucket":
@@ -784,7 +792,7 @@ class Git:
                     return code, parsed._replace(netloc="{}:{}@{}".format("oauth2", broker_token, parsed.hostname)).geturl(), error
                 else:
                     # remove token from url
-                    return code, parsed._replace(netloc=parsed.hostname).geturl(), error
+                    return code, output, error
 
     async def pull(self, curr_fb_path, auth=None, cancel_on_conflict=False):
         """
