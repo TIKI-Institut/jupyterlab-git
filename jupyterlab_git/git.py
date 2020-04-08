@@ -773,7 +773,9 @@ class Git:
                 broker_token = r.json()
                 assert broker_token != ""
             except:
-                return 0, output, "Could not fetch broker token, user must type in credentials!"
+                parsed = urlparse(output)
+                # remove token from url
+                return 0, parsed._replace(netloc=parsed.hostname).geturl(), "Could not fetch broker token, user must type in credentials!"
             else:
                 parsed = urlparse(output)
                 if api_name == "bitbucket":
@@ -781,7 +783,8 @@ class Git:
                 elif api_name == "gitlab":
                     return code, parsed._replace(netloc="{}:{}@{}".format("oauth2", broker_token, parsed.hostname)).geturl(), error
                 else:
-                    return code, output, error
+                    # remove token from url
+                    return code, parsed._replace(netloc=parsed.hostname).geturl(), error
 
     async def pull(self, curr_fb_path, auth=None, cancel_on_conflict=False):
         """
