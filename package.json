@@ -1,6 +1,6 @@
 {
   "name": "@jupyterlab/git",
-  "version": "0.10.0",
+  "version": "0.20.0",
   "description": "A JupyterLab extension for version control using git",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -13,16 +13,17 @@
     "jupyterlab-extension"
   ],
   "scripts": {
-    "build": "jlpm install && tsc",
-    "build:labextension": "jlpm build && jlpm clean:labextension && mkdirp jupyterlab_git/labextension && cd jupyterlab_git/labextension && npm pack ../..",
+    "build": "tsc",
+    "build:labextension": "jlpm && jlpm clean:labextension && mkdirp jupyterlab_git/labextension && cd jupyterlab_git/labextension && npm pack ../..",
     "clean": "rimraf lib tsconfig.tsbuildinfo",
     "clean:more": "jlpm clean && rimraf build dist MANIFEST",
     "clean:labextension": "rimraf jupyterlab_git/labextension",
     "clean:slate": "jlpm clean:more && jlpm clean:labextension && rimraf node_modules",
     "contributors:generate": "jlpm run all-contributors generate",
-    "lint": "tslint --project .",
+    "lint": "eslint . --ext .ts,.tsx --fix",
     "test": "jest",
-    "tslint-check": "tslint-config-prettier-check ./tslint.json",
+    "eslint-check": "eslint . --ext .ts,.tsx",
+    "prepare": "jlpm run build",
     "watch": "tsc -w"
   },
   "files": [
@@ -49,30 +50,33 @@
     "schemaDir": "schema"
   },
   "dependencies": {
-    "@jupyterlab/application": "^1.1.0",
-    "@jupyterlab/apputils": "^1.1.0",
-    "@jupyterlab/codemirror": "^1.1.0",
-    "@jupyterlab/console": "^1.1.0",
-    "@jupyterlab/coreutils": "^3.1.0",
-    "@jupyterlab/filebrowser": "^1.1.0",
-    "@jupyterlab/mainmenu": "^1.1.0",
-    "@jupyterlab/services": "^4.1.0",
-    "@jupyterlab/terminal": "^1.1.0",
-    "@jupyterlab/ui-components": "^1.1.0",
+    "@jupyterlab/application": "^2.0.0",
+    "@jupyterlab/apputils": "^2.0.0",
+    "@jupyterlab/codemirror": "^2.0.0",
+    "@jupyterlab/console": "^2.0.0",
+    "@jupyterlab/coreutils": "^4.0.0",
+    "@jupyterlab/filebrowser": "^2.0.0",
+    "@jupyterlab/mainmenu": "^2.0.0",
+    "@jupyterlab/nbformat": "^2.0.0",
+    "@jupyterlab/services": "^5.0.0",
+    "@jupyterlab/settingregistry": "^2.0.0",
+    "@jupyterlab/terminal": "^2.0.0",
+    "@jupyterlab/ui-components": "^2.0.0",
+    "@lumino/polling": "^1.0.4",
+    "@lumino/widgets": "^1.11.1",
     "@material-ui/core": "^4.8.2",
     "@material-ui/icons": "^4.5.1",
-    "@phosphor/widgets": "^1.8.0",
     "diff-match-patch": "^1.0.4",
-    "nbdime": "~5.0.1",
-    "react": "~16.8.4",
-    "react-dom": "~16.8.4",
+    "nbdime": "^6.0.0",
+    "react": "~16.9.0",
+    "react-dom": "~16.9.0",
     "react-textarea-autosize": "^7.1.2",
     "typestyle": "^2.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.5.0",
     "@babel/preset-env": "^7.5.0",
-    "@jupyterlab/testutils": "^1.1.0",
+    "@jupyterlab/testutils": "^2.0.0",
     "@types/codemirror": "^0.0.79",
     "@types/diff-match-patch": "^1.0.32",
     "@types/enzyme": "3.1.15",
@@ -80,9 +84,15 @@
     "@types/react": "~16.8.13",
     "@types/react-dom": "~16.0.5",
     "@types/react-textarea-autosize": "^4.3.5",
+    "@typescript-eslint/eslint-plugin": "^2.25.0",
+    "@typescript-eslint/parser": "^2.25.0",
     "all-contributors-cli": "6.14.0",
     "enzyme": "3.7.0",
     "enzyme-adapter-react-16": "1.7.0",
+    "eslint": "^6.8.0",
+    "eslint-config-prettier": "^6.10.1",
+    "eslint-plugin-prettier": "^3.1.2",
+    "eslint-plugin-react": "^7.19.0",
     "husky": "1.3.1",
     "identity-obj-proxy": "^3.0.0",
     "jest": "^24",
@@ -93,11 +103,7 @@
     "puppeteer": "^1.10.0",
     "rimraf": "^2.6.1",
     "ts-jest": "^24",
-    "tslint": "^5.11.0",
-    "tslint-config-prettier": "1.18.0",
-    "tslint-plugin-prettier": "^2.0.0",
-    "typescript": "~3.5.1",
-    "typescript-tslint-plugin": "^0.5.4"
+    "typescript": "~3.7.1"
   },
   "peerDependencies": {
     "codemirror": "^5.0.0"
@@ -112,12 +118,9 @@
   },
   "lint-staged": {
     "*.{ts,tsx}": [
-      "tslint --fix",
+      "eslint . --ext .ts,.tsx --fix",
       "git add"
     ]
-  },
-  "prettier": {
-    "singleQuote": true
   },
   "repository": {
     "type": "git",

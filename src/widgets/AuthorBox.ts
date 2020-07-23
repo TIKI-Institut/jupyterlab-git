@@ -1,5 +1,5 @@
 import { Dialog } from '@jupyterlab/apputils';
-import { Widget } from '@phosphor/widgets';
+import { Widget } from '@lumino/widgets';
 import { Git } from '../tokens';
 
 /**
@@ -33,7 +33,7 @@ export class GitAuthorForm extends Widget
    * Returns the input value.
    */
   getValue(): Git.IIdentity {
-    let credentials = {
+    const credentials = {
       name: this._name.value,
       email: this._email.value
     };

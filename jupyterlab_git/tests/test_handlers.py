@@ -4,6 +4,7 @@ from unittest.mock import ANY, Mock, call, patch
 
 import tornado
 
+from jupyterlab_git.git import Git
 from jupyterlab_git.handlers import (
     GitAllHistoryHandler,
     GitBranchHandler,
@@ -13,7 +14,7 @@ from jupyterlab_git.handlers import (
     setup_handlers,
 )
 
-from .testutils import ServerTest, assert_http_error
+from .testutils import ServerTest, assert_http_error, maybe_future
 
 
 def test_mapping_added():
@@ -25,7 +26,7 @@ def test_mapping_added():
 
 
 class TestAllHistory(ServerTest):
-    @patch("jupyterlab_git.handlers.GitAllHistoryHandler.git")
+    @patch("jupyterlab_git.handlers.GitAllHistoryHandler.git", spec=Git)
     def test_all_history_handler_localbranch(self, mock_git):
         # Given
         show_top_level = {"code": 0, "foo": "top_level"}
@@ -33,10 +34,10 @@ class TestAllHistory(ServerTest):
         log = "log_foo"
         status = "status_foo"
 
-        mock_git.show_top_level.return_value = tornado.gen.maybe_future(show_top_level)
-        mock_git.branch.return_value = tornado.gen.maybe_future(branch)
-        mock_git.log.return_value = tornado.gen.maybe_future(log)
-        mock_git.status.return_value = tornado.gen.maybe_future(status)
+        mock_git.show_top_level.return_value = maybe_future(show_top_level)
+        mock_git.branch.return_value = maybe_future(branch)
+        mock_git.log.return_value = maybe_future(log)
+        mock_git.status.return_value = maybe_future(status)
 
         # When
         body = {"current_path": "test_path", "history_count": 25}
@@ -62,7 +63,7 @@ class TestAllHistory(ServerTest):
 
 
 class TestBranch(ServerTest):
-    @patch("jupyterlab_git.handlers.GitBranchHandler.git")
+    @patch("jupyterlab_git.handlers.GitBranchHandler.git", spec=Git)
     def test_branch_handler_localbranch(self, mock_git):
         # Given
         branch = {
@@ -111,7 +112,7 @@ class TestBranch(ServerTest):
             ],
         }
 
-        mock_git.branch.return_value = tornado.gen.maybe_future(branch)
+        mock_git.branch.return_value = maybe_future(branch)
 
         # When
         body = {"current_path": "test_path"}
@@ -126,11 +127,11 @@ class TestBranch(ServerTest):
 
 
 class TestLog(ServerTest):
-    @patch("jupyterlab_git.handlers.GitLogHandler.git")
+    @patch("jupyterlab_git.handlers.GitLogHandler.git", spec=Git)
     def test_log_handler(self, mock_git):
         # Given
         log = {"code": 0, "commits": []}
-        mock_git.log.return_value = tornado.gen.maybe_future(log)
+        mock_git.log.return_value = maybe_future(log)
 
         # When
         body = {"current_path": "test_path", "history_count": 20}
@@ -143,11 +144,11 @@ class TestLog(ServerTest):
         payload = response.json()
         assert payload == log
 
-    @patch("jupyterlab_git.handlers.GitLogHandler.git")
+    @patch("jupyterlab_git.handlers.GitLogHandler.git", spec=Git)
     def test_log_handler_no_history_count(self, mock_git):
         # Given
         log = {"code": 0, "commits": []}
-        mock_git.log.return_value = tornado.gen.maybe_future(log)
+        mock_git.log.return_value = maybe_future(log)
 
         # When
         body = {"current_path": "test_path"}
@@ -162,14 +163,14 @@ class TestLog(ServerTest):
 
 
 class TestPush(ServerTest):
-    @patch("jupyterlab_git.handlers.GitPushHandler.git")
+    @patch("jupyterlab_git.handlers.GitPushHandler.git", spec=Git)
     def test_push_handler_localbranch(self, mock_git):
         # Given
-        mock_git.get_current_branch.return_value = tornado.gen.maybe_future("foo")
-        mock_git.get_upstream_branch.return_value = tornado.gen.maybe_future(
+        mock_git.get_current_branch.return_value = maybe_future("foo")
+        mock_git.get_upstream_branch.return_value = maybe_future(
             "localbranch"
         )
-        mock_git.push.return_value = tornado.gen.maybe_future({"code": 0})
+        mock_git.push.return_value = maybe_future({"code": 0})
 
         # When
         body = {"current_path": "test_path"}
@@ -184,14 +185,14 @@ class TestPush(ServerTest):
         payload = response.json()
         assert payload == {"code": 0}
 
-    @patch("jupyterlab_git.handlers.GitPushHandler.git")
+    @patch("jupyterlab_git.handlers.GitPushHandler.git", spec=Git)
     def test_push_handler_remotebranch(self, mock_git):
         # Given
-        mock_git.get_current_branch.return_value = tornado.gen.maybe_future("foo")
-        mock_git.get_upstream_branch.return_value = tornado.gen.maybe_future(
+        mock_git.get_current_branch.return_value = maybe_future("foo")
+        mock_git.get_upstream_branch.return_value = maybe_future(
             "origin/remotebranch"
         )
-        mock_git.push.return_value = tornado.gen.maybe_future({"code": 0})
+        mock_git.push.return_value = maybe_future({"code": 0})
 
         # When
         body = {"current_path": "test_path"}
@@ -208,12 +209,12 @@ class TestPush(ServerTest):
         payload = response.json()
         assert payload == {"code": 0}
 
-    @patch("jupyterlab_git.handlers.GitPushHandler.git")
+    @patch("jupyterlab_git.handlers.GitPushHandler.git", spec=Git)
     def test_push_handler_noupstream(self, mock_git):
         # Given
-        mock_git.get_current_branch.return_value = tornado.gen.maybe_future("foo")
-        mock_git.get_upstream_branch.return_value = tornado.gen.maybe_future("")
-        mock_git.push.return_value = tornado.gen.maybe_future({"code": 0})
+        mock_git.get_current_branch.return_value = maybe_future("foo")
+        mock_git.get_upstream_branch.return_value = maybe_future("")
+        mock_git.push.return_value = maybe_future({"code": 0})
 
         # When
         body = {"current_path": "test_path"}
@@ -233,11 +234,11 @@ class TestPush(ServerTest):
 
 
 class TestUpstream(ServerTest):
-    @patch("jupyterlab_git.handlers.GitUpstreamHandler.git")
+    @patch("jupyterlab_git.handlers.GitUpstreamHandler.git", spec=Git)
     def test_upstream_handler_localbranch(self, mock_git):
         # Given
-        mock_git.get_current_branch.return_value = tornado.gen.maybe_future("foo")
-        mock_git.get_upstream_branch.return_value = tornado.gen.maybe_future("bar")
+        mock_git.get_current_branch.return_value = maybe_future("foo")
+        mock_git.get_upstream_branch.return_value = maybe_future("bar")
 
         # When
         body = {"current_path": "test_path"}
@@ -261,10 +262,10 @@ class TestDiffContent(ServerTest):
         content = "dummy content file\nwith multiple lines"
 
         mock_execute.side_effect = [
-            tornado.gen.maybe_future((0, "1\t1\t{}".format(filename), "")),
-            tornado.gen.maybe_future((0, content, "")),
-            tornado.gen.maybe_future((0, "1\t1\t{}".format(filename), "")),
-            tornado.gen.maybe_future((0, content, ""))
+            maybe_future((0, "1\t1\t{}".format(filename), "")),
+            maybe_future((0, content, "")),
+            maybe_future((0, "1\t1\t{}".format(filename), "")),
+            maybe_future((0, content, ""))
         ]
 
         # When
@@ -303,9 +304,9 @@ class TestDiffContent(ServerTest):
         content = "dummy content file\nwith multiple lines"
 
         mock_execute.side_effect = [
-            tornado.gen.maybe_future((0, "1\t1\t{}".format(filename), "")),
-            tornado.gen.maybe_future((0, content, "")),
-            tornado.gen.maybe_future((0, content, ""))
+            maybe_future((0, "1\t1\t{}".format(filename), "")),
+            maybe_future((0, content, "")),
+            maybe_future((0, content, ""))
         ]
 
         dummy_file = os.path.join(self.notebook_dir, top_repo_path, filename)
@@ -344,10 +345,10 @@ class TestDiffContent(ServerTest):
         content = "dummy content file\nwith multiple lines"
 
         mock_execute.side_effect = [
-            tornado.gen.maybe_future((0, "1\t1\t{}".format(filename), "")),
-            tornado.gen.maybe_future((0, content, "")),
-            tornado.gen.maybe_future((0, "1\t1\t{}".format(filename), "")),
-            tornado.gen.maybe_future((0, content, ""))
+            maybe_future((0, "1\t1\t{}".format(filename), "")),
+            maybe_future((0, content, "")),
+            maybe_future((0, "1\t1\t{}".format(filename), "")),
+            maybe_future((0, content, ""))
         ]
 
         # When
@@ -386,10 +387,10 @@ class TestDiffContent(ServerTest):
         content = "dummy content file\nwith multiple lines"
 
         mock_execute.side_effect = [
-            tornado.gen.maybe_future((0, "1\t1\t{}".format(filename), "")),
-            tornado.gen.maybe_future((0, content, "")),
-            tornado.gen.maybe_future((0, "1\t1\t{}".format(filename), "")),
-            tornado.gen.maybe_future((0, content, ""))
+            maybe_future((0, "1\t1\t{}".format(filename), "")),
+            maybe_future((0, content, "")),
+            maybe_future((0, "1\t1\t{}".format(filename), "")),
+            maybe_future((0, content, ""))
         ]
 
         # When
@@ -409,7 +410,7 @@ class TestDiffContent(ServerTest):
         top_repo_path = "path/to/repo"
         filename = "my/file"
 
-        mock_execute.return_value = tornado.gen.maybe_future(
+        mock_execute.return_value = maybe_future(
             (
                 -1,
                 "",
@@ -440,7 +441,7 @@ class TestDiffContent(ServerTest):
         top_repo_path = "path/to/repo"
         filename = "my/file"
 
-        mock_execute.return_value = tornado.gen.maybe_future((0, "-\t-\t{}".format(filename), ""))
+        mock_execute.return_value = maybe_future((0, "-\t-\t{}".format(filename), ""))
 
         # When
         body = {
@@ -460,7 +461,7 @@ class TestDiffContent(ServerTest):
         top_repo_path = "path/to/repo"
         filename = "my/file"
 
-        mock_execute.return_value = tornado.gen.maybe_future((-1, "", "Dummy error"))
+        mock_execute.return_value = maybe_future((-1, "", "Dummy error"))
 
         # When
         body = {
@@ -482,9 +483,9 @@ class TestDiffContent(ServerTest):
         content = "dummy content file\nwith multiple lines"
 
         mock_execute.side_effect = [
-            tornado.gen.maybe_future((0, "1\t1\t{}".format(filename), "")),
-            tornado.gen.maybe_future((0, content, "")),
-            tornado.gen.maybe_future((0, content, ""))
+            maybe_future((0, "1\t1\t{}".format(filename), "")),
+            maybe_future((0, content, "")),
+            maybe_future((0, content, ""))
         ]
 
         # When

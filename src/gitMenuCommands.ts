@@ -6,10 +6,11 @@ import {
   showDialog,
   showErrorMessage
 } from '@jupyterlab/apputils';
-import { ISettingRegistry } from '@jupyterlab/coreutils';
 import { FileBrowser } from '@jupyterlab/filebrowser';
+import { ISettingRegistry } from '@jupyterlab/settingregistry';
 import { ITerminal } from '@jupyterlab/terminal';
 import { IGitExtension } from './tokens';
+import { doGitClone } from './widgets/gitClone';
 
 /**
  * The command IDs used by the git plugin.
@@ -20,7 +21,9 @@ export namespace CommandIDs {
   export const gitInit = 'git:init';
   export const gitOpenUrl = 'git:open-url';
   export const gitToggleSimpleStaging = 'git:toggle-simple-staging';
+  export const gitToggleDoubleClickDiff = 'git:toggle-double-click-diff';
   export const gitAddRemote = 'git:add-remote';
+  export const gitClone = 'git:clone';
 }
 
 /**
@@ -38,8 +41,8 @@ export function addCommands(
    * Add open terminal in the Git repository
    */
   commands.addCommand(CommandIDs.gitTerminalCommand, {
-    label: 'Open Terminal in Git Repository',
-    caption: 'Open a New Terminal in the Git Repository',
+    label: 'Open Git Repository in Terminal',
+    caption: 'Open a New Terminal to the Git Repository',
     execute: async args => {
       const main = (await commands.execute(
         'terminal:create-new',
@@ -70,7 +73,9 @@ export function addCommands(
     execute: () => {
       try {
         shell.activateById('jp-git-sessions');
-      } catch (err) {}
+      } catch (err) {
+        console.error('Fail to open Git tab.');
+      }
     }
   });
 
@@ -111,6 +116,15 @@ export function addCommands(
     }
   });
 
+  /** add toggle for double click opens diffs */
+  commands.addCommand(CommandIDs.gitToggleDoubleClickDiff, {
+    label: 'Double click opens diff',
+    isToggled: () => !!settings.composite['doubleClickDiff'],
+    execute: args => {
+      settings.set('doubleClickDiff', !settings.composite['doubleClickDiff']);
+    }
+  });
+
   /** Command to add a remote Git repository */
   commands.addCommand(CommandIDs.gitAddRemote, {
     label: 'Add remote repository',
@@ -122,7 +136,7 @@ export function addCommands(
         return;
       }
       let url = args['url'] as string;
-      let name = args['name'] as string;
+      const name = args['name'] as string;
 
       if (!url) {
         const result = await InputDialog.getText({
@@ -143,6 +157,17 @@ export function addCommands(
           showErrorMessage('Error when adding remote repository', error);
         }
       }
+    }
+  });
+
+  /** Add git clone command */
+  commands.addCommand(CommandIDs.gitClone, {
+    label: 'Clone',
+    caption: 'Clone a repository from a URL',
+    isEnabled: () => model.pathRepository === null,
+    execute: async () => {
+      await doGitClone(model, fileBrowser.model.path);
+      fileBrowser.model.refresh();
     }
   });
 }

@@ -1,5 +1,5 @@
 import { Dialog } from '@jupyterlab/apputils';
-import { Widget } from '@phosphor/widgets';
+import { Widget } from '@lumino/widgets';
 import { Git } from '../tokens';
 
 /**
@@ -8,8 +8,8 @@ import { Git } from '../tokens';
 export class GitCredentialsForm extends Widget
   implements Dialog.IBodyWidget<Git.IAuth> {
   constructor(
-    textContent: string = 'Enter credentials for remote repository',
-    warningContent: string = ''
+    textContent = 'Enter credentials for remote repository',
+    warningContent = ''
   ) {
     super();
     this.node.appendChild(this.createBody(textContent, warningContent));

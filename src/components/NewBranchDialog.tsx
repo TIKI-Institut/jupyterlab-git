@@ -204,6 +204,7 @@ export class NewBranchDialog extends React.Component<
             title="Create a new branch"
             value="Create Branch"
             onClick={this._onCreate}
+            disabled={this.state.name === ''}
           />
         </DialogActions>
       </Dialog>
@@ -233,6 +234,13 @@ export class NewBranchDialog extends React.Component<
     function comparator(a: Git.IBranch, b: Git.IBranch): number {
       if (a.name === current) {
         return -1;
+      } else if (b.name === current) {
+        return 1;
+      }
+      if (a.name === 'master') {
+        return -1;
+      } else if (b.name === 'master') {
+        return 1;
       }
       return 0;
     }
@@ -270,7 +278,14 @@ export class NewBranchDialog extends React.Component<
         key={branch.name}
         onClick={this._onBranchClickFactory(branch.name)}
       >
-        <span className={classes(listItemIconClass, 'jp-Icon-16')} />
+        <span
+          className={classes(
+            'jp-git-icon',
+            listItemIconClass,
+            'jp-Icon-16',
+            isBold && 'jp-git-selected'
+          )}
+        />
         <div className={listItemContentClass}>
           <p
             className={classes(
@@ -390,19 +405,8 @@ export class NewBranchDialog extends React.Component<
    * @param event - event object
    */
   private _onCreate = (): void => {
-    const branch = this.state.name;
-
-    // Close the branch dialog:
-    this.props.onClose();
-
-    // Reset the branch name and filter:
-    this.setState({
-      name: '',
-      filter: ''
-    });
-
     // Create the branch:
-    this._createBranch(branch);
+    this._createBranch(this.state.name);
   };
 
   /**
@@ -411,6 +415,7 @@ export class NewBranchDialog extends React.Component<
    * @param branch - branch name
    */
   private _createBranch(branch: string): void {
+    const self = this;
     const opts = {
       newBranch: true,
       branchname: branch
@@ -429,6 +434,15 @@ export class NewBranchDialog extends React.Component<
     function onResolve(result: any): void {
       if (result.code !== 0) {
         showErrorMessage('Error creating branch', result.message);
+      } else {
+        // Close the branch dialog:
+        self.props.onClose();
+
+        // Reset the branch name and filter:
+        self.setState({
+          name: '',
+          filter: ''
+        });
       }
     }
 
@@ -439,7 +453,10 @@ export class NewBranchDialog extends React.Component<
      * @param err - error
      */
     function onError(err: any): void {
-      showErrorMessage('Error creating branch', err.message);
+      showErrorMessage(
+        'Error creating branch',
+        err.message.replace(/^fatal:/, '')
+      );
     }
   }
 }

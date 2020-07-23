@@ -2,5 +2,6 @@ channels:
 - conda-forge
 dependencies:
 # Jupyter
-- jupyterlab~=1.1
-- nodejs>=11
+- jupyterlab~=2.0
+- nodejs>=12
+- nbgitpuller

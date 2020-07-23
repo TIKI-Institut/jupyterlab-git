@@ -1,11 +1,11 @@
 import { IChangedArgs } from '@jupyterlab/coreutils';
-import { Token, JSONObject } from '@phosphor/coreutils';
-import { IDisposable } from '@phosphor/disposable';
-import { ISignal } from '@phosphor/signaling';
+import { DocumentRegistry } from '@jupyterlab/docregistry';
+import { Token, JSONObject } from '@lumino/coreutils';
+import { IDisposable } from '@lumino/disposable';
+import { ISignal } from '@lumino/signaling';
 
 export const EXTENSION_ID = 'jupyter.extensions.git_plugin';
 
-// tslint:disable-next-line: variable-name
 export const IGitExtension = new Token<IGitExtension>(EXTENSION_ID);
 
 /** Interface for extension class */
@@ -374,6 +374,9 @@ export namespace Git {
     y: string;
     to: string;
     from: string;
+    is_binary: boolean | null;
+    // filetype as determined by app.docRegistry
+    type?: DocumentRegistry.IFileType;
   }
 
   /**
@@ -410,6 +413,9 @@ export namespace Git {
     modified_file_name: string;
     insertion: string;
     deletion: string;
+    is_binary: boolean | null;
+    // filetype as determined by app.docRegistry
+    type?: DocumentRegistry.IFileType;
   }
 
   /** Interface for GitDetailedLog request result,
@@ -421,7 +427,7 @@ export namespace Git {
     modified_files_count?: string;
     number_of_insertions?: string;
     number_of_deletions?: string;
-    modified_files?: [ICommitModifiedFile];
+    modified_files?: ICommitModifiedFile[];
   }
 
   /** Interface for GitLog request result,
@@ -429,7 +435,7 @@ export namespace Git {
    */
   export interface ILogResult {
     code: number;
-    commits?: [ISingleCommitInfo];
+    commits?: ISingleCommitInfo[];
   }
 
   export interface IIdentity {
@@ -492,5 +498,10 @@ export namespace Git {
     toggle(fname: string): void;
   }
 
-  export type Status = 'untracked' | 'staged' | 'unstaged' | null;
+  export type Status =
+    | 'untracked'
+    | 'staged'
+    | 'unstaged'
+    | 'partially-staged'
+    | null;
 }

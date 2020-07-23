@@ -74,6 +74,9 @@ describe('IGitExtension', () => {
     const app = {
       commands: {
         hasCommand: jest.fn().mockReturnValue(true)
+      },
+      docRegistry: {
+        getFileTypesForPath: jest.fn().mockReturnValue([])
       }
     };
     model = new GitExtension(app as any);
@@ -190,7 +193,7 @@ describe('IGitExtension', () => {
 
       model.pathRepository = '/path/to/server/repo';
       await model.ready;
-      status = [{ x: '', y: '', from: '', to: '' }];
+      status = [{ x: '', y: '', from: '', to: '', is_binary: null }];
       await model.refreshStatus();
       expect(model.status).toHaveLength(1);
 
@@ -220,7 +223,7 @@ describe('IGitExtension', () => {
 
       model.pathRepository = '/path/to/server/repo';
       await model.ready;
-      status = [{ x: '', y: '', from: '', to: '' }];
+      status = [{ x: '', y: '', from: '', to: '', is_binary: null }];
       await model.refreshStatus();
       await testSignal;
     });

@@ -1,26 +1,33 @@
-import * as React from 'react';
 import { IRenderMimeRegistry } from '@jupyterlab/rendermime';
-import { DefaultIconReact } from '@jupyterlab/ui-components';
-import { classes } from 'typestyle';
+import { fileIcon } from '@jupyterlab/ui-components';
+import * as React from 'react';
+import { classes } from 'typestyle/';
 import { GitExtension } from '../model';
-import { Git } from '../tokens';
+import {
+  deletionsMadeIcon,
+  diffIcon,
+  discardIcon,
+  insertionsMadeIcon,
+  rewindIcon
+} from '../style/icons';
 import {
   actionButtonClass,
   commitClass,
+  commitDetailClass,
   commitDetailFileClass,
   commitDetailHeaderClass,
-  commitDetailClass,
   commitOverviewNumbersClass,
   deletionsIconClass,
   fileListClass,
   iconClass,
   insertionsIconClass
 } from '../style/SinglePastCommitInfo';
+import { Git } from '../tokens';
+import { ActionButton } from './ActionButton';
 import { isDiffSupported } from './diff/Diff';
 import { openDiffView } from './diff/DiffWidget';
-import { ResetRevertDialog } from './ResetRevertDialog';
 import { FilePath } from './FilePath';
-import { ActionButton } from './ActionButton';
+import { ResetRevertDialog } from './ResetRevertDialog';
 
 /**
  * Interface describing component properties.
@@ -160,20 +167,20 @@ export class SinglePastCommitInfo extends React.Component<
         <div className={commitClass}>
           <div className={commitOverviewNumbersClass}>
             <span title="# Files Changed">
-              <DefaultIconReact name="file" className={iconClass} />
+              <fileIcon.react className={iconClass} tag="span" />
               {this.state.numFiles}
             </span>
             <span title="# Insertions">
-              <DefaultIconReact
-                name="git-insertionsMade"
+              <insertionsMadeIcon.react
                 className={classes(iconClass, insertionsIconClass)}
+                tag="span"
               />
               {this.state.insertions}
             </span>
             <span title="# Deletions">
-              <DefaultIconReact
-                name="git-deletionsMade"
+              <deletionsMadeIcon.react
                 className={classes(iconClass, deletionsIconClass)}
+                tag="span"
               />
               {this.state.deletions}
             </span>
@@ -184,13 +191,13 @@ export class SinglePastCommitInfo extends React.Component<
             Changed
             <ActionButton
               className={actionButtonClass}
-              iconName="git-discard"
+              icon={discardIcon}
               title="Revert changes introduced by this commit"
               onClick={this._onRevertClick}
             />
             <ActionButton
               className={actionButtonClass}
-              iconName="git-rewind"
+              icon={rewindIcon}
               title="Discard changes introduced *after* this commit (hard reset)"
               onClick={this._onResetClick}
             />
@@ -230,7 +237,7 @@ export class SinglePastCommitInfo extends React.Component<
    */
   private _renderFile(file: Git.ICommitModifiedFile): React.ReactElement {
     const path = file.modified_file_path;
-    const flg = isDiffSupported(path);
+    const flg = isDiffSupported(path) || !file.is_binary;
     return (
       <li
         className={commitDetailFileClass}
@@ -240,7 +247,7 @@ export class SinglePastCommitInfo extends React.Component<
       >
         <FilePath filepath={path} />
         {flg ? (
-          <ActionButton iconName="git-diff" title="View file changes" />
+          <ActionButton icon={diffIcon} title="View file changes" />
         ) : null}
       </li>
     );
@@ -330,7 +337,8 @@ export class SinglePastCommitInfo extends React.Component<
               gitRef: self.props.commit.commit
             }
           },
-          self.props.renderMime
+          self.props.renderMime,
+          bool
         );
       } catch (err) {
         console.error(`Failed to open diff view for ${fpath}.\n${err}`);

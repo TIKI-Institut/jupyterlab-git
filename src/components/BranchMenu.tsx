@@ -1,10 +1,9 @@
-import * as React from 'react';
-import { classes } from 'typestyle';
+import { Dialog, showDialog, showErrorMessage } from '@jupyterlab/apputils';
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 import ClearIcon from '@material-ui/icons/Clear';
-import { showErrorMessage } from '@jupyterlab/apputils';
-import { Git, IGitExtension } from '../tokens';
+import * as React from 'react';
+import { classes } from 'typestyle';
 import {
   activeListItemClass,
   filterClass,
@@ -17,6 +16,7 @@ import {
   newBranchButtonClass,
   wrapperClass
 } from '../style/BranchMenu';
+import { Git, IGitExtension } from '../tokens';
 import { NewBranchDialog } from './NewBranchDialog';
 
 const CHANGES_ERR_MSG =
@@ -174,18 +174,25 @@ export class BranchMenu extends React.Component<
     if (this.state.filter && !branch.name.includes(this.state.filter)) {
       return null;
     }
+    const isActive = branch.name === this.state.current;
     return (
       <ListItem
         button
         title={`Switch to branch: ${branch.name}`}
         className={classes(
           listItemClass,
-          branch.name === this.state.current ? activeListItemClass : null
+          isActive ? activeListItemClass : null
         )}
         key={branch.name}
         onClick={this._onBranchClickFactory(branch.name)}
       >
-        <span className={listItemIconClass} />
+        <span
+          className={classes(
+            'jp-git-icon',
+            listItemIconClass,
+            isActive && 'jp-git-selected'
+          )}
+        />
         {branch.name}
       </ListItem>
     );
@@ -314,7 +321,41 @@ export class BranchMenu extends React.Component<
      * @param err - error
      */
     function onError(err: any): void {
-      showErrorMessage('Error switching branch', err.message);
+      if (err.message.includes('following files would be overwritten')) {
+        showDialog({
+          title: 'Unable to switch branch',
+          body: (
+            <React.Fragment>
+              <p>
+                Your changes to the following files would be overwritten by
+                switching:
+              </p>
+              <List>
+                {err.message
+                  .split('\n')
+                  .slice(1, -3)
+                  .map(renderFileName)}
+              </List>
+              <span>
+                Please commit, stash, or discard your changes before you switch
+                branches.
+              </span>
+            </React.Fragment>
+          ),
+          buttons: [Dialog.okButton({ label: 'Dismiss' })]
+        });
+      } else {
+        showErrorMessage('Error switching branch', err.message);
+      }
+    }
+
+    /**
+     * Render a filename into a list
+     * @param filename
+     * @returns ReactElement
+     */
+    function renderFileName(filename: string): React.ReactElement {
+      return <ListItem key={filename}>{filename}</ListItem>;
     }
   }
 }

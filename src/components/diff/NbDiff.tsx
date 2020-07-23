@@ -1,4 +1,5 @@
-import { nbformat, PathExt } from '@jupyterlab/coreutils';
+import { PathExt } from '@jupyterlab/coreutils';
+import * as nbformat from '@jupyterlab/nbformat';
 import { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { ServerConnection } from '@jupyterlab/services/lib/serverconnection';
 import { IDiffEntry } from 'nbdime/lib/diff/diffentries';
@@ -161,7 +162,7 @@ export class NBDiff extends React.Component<IDiffProps, INBDiffState> {
   }
 
   /**
-   * Based on the Diff Context , calls the server API with the revant paremeters
+   * Based on the Diff Context , calls the server API with the revant parameters
    * to
    * @param diffContext the context in which to perform the diff
    */
@@ -195,9 +196,9 @@ export class NBDiff extends React.Component<IDiffProps, INBDiffState> {
               });
             } else {
               // Handle response
-              let base = data.base;
-              let diff = data.diff;
-              let nbdModel = new NotebookDiffModel(base, diff);
+              const base = data.base;
+              const diff = data.diff;
+              const nbdModel = new NotebookDiffModel(base, diff);
               this.setState({
                 nbdModel: nbdModel
               });

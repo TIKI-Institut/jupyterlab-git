@@ -8,10 +8,10 @@ import {
 } from '@jupyterlab/apputils';
 import { IChangedArgs } from '@jupyterlab/coreutils';
 import { FileBrowser } from '@jupyterlab/filebrowser';
-import { Widget } from '@phosphor/widgets';
+import { Widget } from '@lumino/widgets';
 import * as React from 'react';
 import { AUTH_ERROR_MESSAGES } from '../git';
-import { cloneButtonStyle } from '../style/CloneButton';
+import { cloneIcon } from '../style/icons';
 import { IGitExtension } from '../tokens';
 import { GitCredentialsForm } from './CredentialsBox';
 
@@ -30,7 +30,7 @@ export function addCloneButton(model: IGitExtension, filebrowser: FileBrowser) {
         {(_, change: IChangedArgs<string | null>) => (
           <ToolbarButtonComponent
             enabled={change.newValue === null}
-            iconClassName={`${cloneButtonStyle} jp-Icon jp-Icon-16`}
+            icon={cloneIcon}
             onClick={async () => {
               await doGitClone(model, filebrowser.model.path);
               filebrowser.model.refresh();
@@ -103,7 +103,10 @@ async function makeApiCall(
  * 1. Invokes a new dialog box with form fields.
  * 2. Invokes the server API with the form input.
  */
-async function doGitClone(model: IGitExtension, path: string): Promise<void> {
+export async function doGitClone(
+  model: IGitExtension,
+  path: string
+): Promise<void> {
   const result = await showDialog({
     title: 'Clone a repo',
     body: new GitCloneForm(),

@@ -9,6 +9,8 @@ from urllib.parse import unquote, urlparse
 import requests
 import pexpect
 import tornado
+import tornado.locks
+import datetime
 
 
 # Git configuration options exposed through the REST API
@@ -17,11 +19,18 @@ ALLOWED_OPTIONS = ['user.name', 'user.email']
 # See https://git-scm.com/docs/git-config#_syntax for git var syntax
 CONFIG_PATTERN = re.compile(r"(?:^|\n)([\w\-\.]+)\=")
 DEFAULT_REMOTE_NAME = "origin"
+# How long to wait to be executed or finished your execution before timing out
+MAX_WAIT_FOR_EXECUTE_S = 20
+# Ensure on NFS or similar, that we give the .git/index.lock time to be removed
+MAX_WAIT_FOR_LOCK_S = 5
+# How often should we check for the lock above to be free? This comes up more on things like NFS
+CHECK_LOCK_INTERVAL_S = 0.1
 
+execution_lock = tornado.locks.Lock()
 
 async def execute(
     cmdline: "List[str]",
-    cwd: "Optional[str]" = None,
+    cwd: "str",
     env: "Optional[Dict[str, str]]" = None,
     username: "Optional[str]" = None,
     password: "Optional[str]" = None,
@@ -86,19 +95,36 @@ async def execute(
         output, error = process.communicate()
         return (process.returncode, output.decode("utf-8"), error.decode("utf-8"))
 
-    if username is not None and password is not None:
-        code, output, error = await call_subprocess_with_authentication(
-            cmdline,
-            username,
-            password,
-            cwd,
-            env,
-        )
-    else:
-        current_loop = tornado.ioloop.IOLoop.current()
-        code, output, error = await current_loop.run_in_executor(
-            None, call_subprocess, cmdline, cwd, env
-        )
+    try:
+        await execution_lock.acquire(timeout=datetime.timedelta(seconds=MAX_WAIT_FOR_EXECUTE_S))
+    except  tornado.util.TimeoutError:
+        return (1, "", "Unable to get the lock on the directory")
+
+    try:
+        # Ensure our execution operation will succeed by first checking and waiting for the lock to be removed
+        time_slept = 0
+        lockfile = os.path.join(cwd, '.git', 'index.lock')
+        while os.path.exists(lockfile) and time_slept < MAX_WAIT_FOR_LOCK_S:
+            await tornado.gen.sleep(CHECK_LOCK_INTERVAL_S)
+            time_slept += CHECK_LOCK_INTERVAL_S
+
+        # If the lock still exists at this point, we will likely fail anyway, but let's try anyway
+
+        if username is not None and password is not None:
+            code, output, error = await call_subprocess_with_authentication(
+                cmdline,
+                username,
+                password,
+                cwd,
+                env,
+            )
+        else:
+            current_loop = tornado.ioloop.IOLoop.current()
+            code, output, error = await current_loop.run_in_executor(
+                None, call_subprocess, cmdline, cwd, env
+            )
+    finally:
+        execution_lock.release()
 
     return code, output, error
 
@@ -256,15 +282,36 @@ class Git:
                 "message": my_error,
             }
 
+        # Add attribute `is_binary`
+        command = [  # Compare stage to an empty tree see `_is_binary`
+            "git",
+            "diff",
+            "--numstat",
+            "-z",
+            "--cached",
+            "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+        ]
+        text_code, text_output, _ = await execute(
+            command, cwd=os.path.join(self.root_dir, current_path),
+        )
+
+        are_binary = dict()
+        if text_code == 0:
+            for line in filter(lambda l: len(l) > 0, strip_and_split(text_output)):
+                diff, name = line.rsplit("\t", maxsplit=1)
+                are_binary[name] = diff.startswith("-\t-")
+        
         result = []
-        line_iterable = line_iterable = (line for line in strip_and_split(my_output) if line)
+        line_iterable = (line for line in strip_and_split(my_output) if line)
         for line in line_iterable:
+            name = line[3:]
             result.append({
                 "x": line[0],
                 "y": line[1],
-                "to": line[3:],
+                "to": name,
                 # if file was renamed, next line contains original path
-                "from": next(line_iterable) if line[0]=='R' else line[3:]
+                "from": next(line_iterable) if line[0]=='R' else name,
+                "is_binary": are_binary.get(name, None)
             })
         return {"code": code, "files": result}
 
@@ -330,7 +377,10 @@ class Git:
         result = []
         line_iterable = iter(strip_and_split(my_output)[1:])
         for line in line_iterable:
+            is_binary = line.startswith("-\t-\t")
             insertions, deletions, file = line.split('\t')
+            insertions = insertions.replace('-', '0')
+            deletions = deletions.replace('-', '0')
 
             if file == '':
                 # file was renamed or moved, we need next two lines of output
@@ -343,10 +393,11 @@ class Git:
                 modified_file_path = file
 
             result.append({
-                        "modified_file_path": modified_file_path,
-                        "modified_file_name": modified_file_name,
-                        "insertion": insertions,
-                        "deletion": deletions,
+                "modified_file_path": modified_file_path,
+                "modified_file_name": modified_file_name,
+                "insertion": insertions,
+                "deletion": deletions,
+                "is_binary": is_binary
             })
             total_insertions += int(insertions)
             total_deletions += int(deletions)
@@ -1041,10 +1092,10 @@ class Git:
             if curr_ref["special"] == "WORKING":
                 curr_content = self.get_content(filename, top_repo_path)
             elif curr_ref["special"] == "INDEX":
-                is_binary = await self._is_binary(filename, "", top_repo_path)
+                is_binary = await self._is_binary(filename, "INDEX", top_repo_path)
                 if is_binary:
                     raise tornado.web.HTTPError(log_message="Error occurred while executing command to retrieve plaintext diff as file is not UTF-8.")
-                    
+
                 curr_content = await self.show(filename, "", top_repo_path)
             else:
                 raise tornado.web.HTTPError(
@@ -1068,8 +1119,22 @@ class Git:
         -   <https://stackoverflow.com/questions/6119956/how-to-determine-if-git-handles-a-file-as-binary-or-as-text/6134127#6134127>
         -   <https://git-scm.com/docs/git-diff#Documentation/git-diff.txt---numstat>
         -   <https://git-scm.com/docs/git-diff#_other_diff_formats>
+
+        Args:
+            filename (str): Filename (relative to the git repository)
+            ref (str): Commit reference or "INDEX" if file is staged
+            top_repo_path (str): Git repository filepath
+
+        Returns:
+            bool: Is file binary?
+        
+        Raises:
+            HTTPError: if git command failed
         """
-        command = ["git", "diff", "--numstat", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", ref, "--", filename]  # where 4b825... is a magic SHA which represents the empty tree
+        if ref == "INDEX":
+            command = ["git", "diff", "--numstat", "--cached", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "--", filename]
+        else:
+            command = ["git", "diff", "--numstat", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", ref, "--", filename]  # where 4b825... is a magic SHA which represents the empty tree
         code, output, error = await execute(command, cwd=top_repo_path)
 
         if code != 0:
@@ -1080,10 +1145,7 @@ class Git:
             raise tornado.web.HTTPError(log_message="Error while determining if file is binary or text '{}'.".format(error))
 
         # For binary files, `--numstat` outputs two `-` characters separated by TABs:
-        if output.startswith('-\t-\t'):
-            return True
-
-        return False
+        return output.startswith('-\t-\t')
 
     def remote_add(self, top_repo_path, url, name=DEFAULT_REMOTE_NAME):
         """Handle call to `git remote add` command.
