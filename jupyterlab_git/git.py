@@ -3,28 +3,34 @@ Module for executing git commands, sending results back to the handlers
 """
 import os
 import re
+import shlex
 import subprocess
 from urllib.parse import unquote, urlparse
 
 import requests
+import pathlib
 import pexpect
 import tornado
 import tornado.locks
 import datetime
 
+from .log import get_logger
 
-# Git configuration options exposed through the REST API
-ALLOWED_OPTIONS = ['user.name', 'user.email']
+
 # Regex pattern to capture (key, value) of Git configuration options.
 # See https://git-scm.com/docs/git-config#_syntax for git var syntax
 CONFIG_PATTERN = re.compile(r"(?:^|\n)([\w\-\.]+)\=")
 DEFAULT_REMOTE_NAME = "origin"
+# Maximum number of character of command output to print in debug log
+MAX_LOG_OUTPUT = 500  # type: int
 # How long to wait to be executed or finished your execution before timing out
 MAX_WAIT_FOR_EXECUTE_S = 20
 # Ensure on NFS or similar, that we give the .git/index.lock time to be removed
 MAX_WAIT_FOR_LOCK_S = 5
 # How often should we check for the lock above to be free? This comes up more on things like NFS
 CHECK_LOCK_INTERVAL_S = 0.1
+# Parse Git version output
+GIT_VERSION_REGEX = re.compile(r"^git\sversion\s(?P<version>\d+(.\d+)*)")
 
 execution_lock = tornado.locks.Lock()
 
@@ -97,7 +103,7 @@ async def execute(
 
     try:
         await execution_lock.acquire(timeout=datetime.timedelta(seconds=MAX_WAIT_FOR_EXECUTE_S))
-    except  tornado.util.TimeoutError:
+    except tornado.util.TimeoutError:
         return (1, "", "Unable to get the lock on the directory")
 
     try:
@@ -110,6 +116,7 @@ async def execute(
 
         # If the lock still exists at this point, we will likely fail anyway, but let's try anyway
 
+        get_logger().debug("Execute {!s} in {!s}.".format(cmdline, cwd))
         if username is not None and password is not None:
             code, output, error = await call_subprocess_with_authentication(
                 cmdline,
@@ -123,6 +130,11 @@ async def execute(
             code, output, error = await current_loop.run_in_executor(
                 None, call_subprocess, cmdline, cwd, env
             )
+        log_output = output[:MAX_LOG_OUTPUT] + "..." if len(output) > MAX_LOG_OUTPUT else output
+        log_error = error[:MAX_LOG_OUTPUT] + "..." if len(error) > MAX_LOG_OUTPUT else error
+        get_logger().debug("Code: {}\nOutput: {}\nError: {}".format(code, log_output, log_error))
+    except BaseException:
+        get_logger().warning("Fail to execute {!s}".format(cmdline), exc_info=True)
     finally:
         execution_lock.release()
 
@@ -141,9 +153,10 @@ class Git:
     A single parent class containing all of the individual git methods in it.
     """
 
-    def __init__(self, contents_manager):
+    def __init__(self, contents_manager, config=None):
         self.contents_manager = contents_manager
         self.root_dir = os.path.expanduser(contents_manager.root_dir)
+        self._config = config
 
     async def config(self, top_repo_path, **kwargs):
         """Get or set Git options.
@@ -154,9 +167,7 @@ class Git:
 
         if len(kwargs):
             output = []
-            for k, v in filter(
-                lambda t: True if t[0] in ALLOWED_OPTIONS else False, kwargs.items()
-            ):
+            for k, v in kwargs.items():
                 cmd = ["git", "config", "--add", k, v]
                 code, out, err = await execute(cmd, cwd=top_repo_path)
                 output.append(out.strip())
@@ -178,11 +189,11 @@ class Git:
             else:
                 raw = output.strip()
                 s = CONFIG_PATTERN.split(raw)
-                response["options"] = {k:v for k, v in zip(s[1::2], s[2::2]) if k in ALLOWED_OPTIONS}
+                response["options"] = {k:v for k, v in zip(s[1::2], s[2::2])}
 
         return response
 
-    async def changed_files(self, base=None, remote=None, single_commit=None):
+    async def changed_files(self, current_path, base=None, remote=None, single_commit=None):
         """Gets the list of changed files between two Git refs, or the files changed in a single commit
 
         There are two reserved "refs" for the base
@@ -202,7 +213,7 @@ class Git:
             }
         """
         if single_commit:
-            cmd = ["git", "diff", "{}^!".format(single_commit), "--name-only", "-z"]
+            cmd = ["git", "diff", single_commit, "--name-only", "-z"]
         elif base and remote:
             if base == "WORKING":
                 cmd = ["git", "diff", remote, "--name-only", "-z"]
@@ -217,7 +228,7 @@ class Git:
 
         response = {}
         try:
-            code, output, error = await execute(cmd, cwd=self.root_dir)
+            code, output, error = await execute(cmd, cwd=os.path.join(self.root_dir, current_path))
         except subprocess.CalledProcessError as e:
             response["code"] = e.returncode
             response["message"] = e.output.decode("utf-8")
@@ -300,7 +311,7 @@ class Git:
             for line in filter(lambda l: len(l) > 0, strip_and_split(text_output)):
                 diff, name = line.rsplit("\t", maxsplit=1)
                 are_binary[name] = diff.startswith("-\t-")
-        
+
         result = []
         line_iterable = (line for line in strip_and_split(my_output) if line)
         for line in line_iterable:
@@ -895,16 +906,20 @@ class Git:
 
         return response
 
-    async def push(self, remote, branch, curr_fb_path, auth=None):
+    async def push(self, remote, branch, curr_fb_path, auth=None, set_upstream=False):
         """
         Execute `git push $UPSTREAM $BRANCH`. The choice of upstream and branch is up to the caller.
         """
+        command = ["git", "push"]
+        if set_upstream:
+            command.append("--set-upstream")
+        command.extend([remote, branch])
 
         env = os.environ.copy()
         if auth:
             env["GIT_TERMINAL_PROMPT"] = "1"
             code, _, error = await execute(
-                ["git", "push", remote, branch],
+                command,
                 username=auth["username"],
                 password=auth["password"],
                 cwd=os.path.join(self.root_dir, curr_fb_path),
@@ -919,7 +934,7 @@ class Git:
                 return response
 
             code, _, error = await execute(
-                ["git", "push", url, branch],
+                command,
                 env=env,
                 cwd=os.path.join(self.root_dir, curr_fb_path),
             )
@@ -936,13 +951,50 @@ class Git:
         Execute git init command & return the result.
         """
         cmd = ["git", "init"]
+        cwd = os.path.join(self.root_dir, current_path)
         code, _, error = await execute(
-            cmd, cwd=os.path.join(self.root_dir, current_path)
+            cmd, cwd=cwd
         )
 
+        actions = None
+        if code == 0:
+            code, actions = await self._maybe_run_actions('post_init', cwd)
+
         if code != 0:
-            return {"code": code, "command": " ".join(cmd), "message": error}
-        return {"code": code}
+            return {"code": code, "command": " ".join(cmd), "message": error, "actions": actions}
+        return {"code": code, "actions": actions}
+
+    async def _maybe_run_actions(self, name, cwd):
+        code = 0
+        actions = None
+        if self._config and name in self._config.actions:
+            actions = []
+            actions_list = self._config.actions[name]
+            for action in actions_list:
+                try:
+                    # We trust the actions as they were passed via a config and not the UI
+                    code, stdout, stderr = await execute(
+                        shlex.split(action), cwd=cwd
+                    )
+                    actions.append({
+                        'cmd': action,
+                        'code': code,
+                        'stdout': stdout,
+                        'stderr': stderr
+                    })
+                    # After any failure, stop
+                except Exception as e:
+                    code = 1
+                    actions.append({
+                        'cmd': action,
+                        'code': 1,
+                        'stdout': None,
+                        'stderr': 'Exception: {}'.format(e)
+                    })
+                if code != 0:
+                    break
+
+        return code, actions
 
     def _is_remote_branch(self, branch_reference):
         """Check if given branch is remote branch by comparing with 'remotes/',
@@ -956,12 +1008,12 @@ class Git:
         to the `branch` command to get the name.
         See https://git-blame.blogspot.com/2013/06/checking-current-branch-programatically.html
         """
-        command = ["git", "symbolic-ref", "HEAD"]
+        command = ["git", "symbolic-ref", "--short", "HEAD"]
         code, output, error = await execute(
             command, cwd=os.path.join(self.root_dir, current_path)
         )
         if code == 0:
-            return output.split("/")[-1].strip()
+            return output.strip()
         elif "not a symbolic ref" in error.lower():
             current_branch = await self._get_current_branch_detached(current_path)
             return current_branch
@@ -1005,22 +1057,24 @@ class Git:
         code, output, error = await execute(
             command, cwd=os.path.join(self.root_dir, current_path)
         )
-        if code == 0:
-            return output.strip()
-        elif "fatal: no upstream configured for branch" in error.lower():
-            return None
-        elif "unknown revision or path not in the working tree" in error.lower():
-            return None
-        else:
-            raise Exception(
-                "Error [{}] occurred while executing [{}] command to get upstream branch.".format(
-                    error, " ".join(command)
-                )
-            )
+        if code != 0:
+            return {"code": code, "command": " ".join(command), "message": error}
+        rev_parse_output = output.strip()
+
+        command = ["git", "config", "--local", "branch.{}.remote".format(branch_name)]
+        code, output, error = await execute(
+            command, cwd=os.path.join(self.root_dir, current_path)
+        )
+        if code != 0:
+            return {"code": code, "command": " ".join(command), "message": error}
+
+        remote_name = output.strip()
+        remote_branch = rev_parse_output.strip().lstrip(remote_name+"/")
+        return {"code": code, "remote_short_name": remote_name, "remote_branch": remote_branch}
 
     async def _get_tag(self, current_path, commit_sha):
         """Execute 'git describe commit_sha' to get
-        nearest tag associated with lastest commit in branch.
+        nearest tag associated with latest commit in branch.
         Reference : https://git-scm.com/docs/git-describe#git-describe-ltcommit-ishgt82308203
         """
         command = ["git", "describe", "--tags", commit_sha]
@@ -1127,7 +1181,7 @@ class Git:
 
         Returns:
             bool: Is file binary?
-        
+
         Raises:
             HTTPError: if git command failed
         """
@@ -1147,7 +1201,7 @@ class Git:
         # For binary files, `--numstat` outputs two `-` characters separated by TABs:
         return output.startswith('-\t-\t')
 
-    def remote_add(self, top_repo_path, url, name=DEFAULT_REMOTE_NAME):
+    async def remote_add(self, top_repo_path, url, name=DEFAULT_REMOTE_NAME):
         """Handle call to `git remote add` command.
 
         top_repo_path: str
@@ -1158,16 +1212,120 @@ class Git:
             Remote name; default "origin"
         """
         cmd = ["git", "remote", "add", name, url]
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=top_repo_path)
-        _, my_error = p.communicate()
-        if p.returncode == 0:
-            return {
-                "code": p.returncode,
+        code, _, error = await execute(cmd, cwd=top_repo_path)
+        response = {
+                "code": code,
                 "command": " ".join(cmd)
             }
+
+        if code != 0:
+            response["message"] = error
+
+        return response
+
+    async def remote_show(self, path):
+        """Handle call to `git remote show` command.
+        Args:
+            path (str): Git repository path
+
+        Returns:
+            List[str]: Known remotes
+        """
+        command = ["git", "remote", "show"]
+        code, output, error = await execute(command, cwd=path)
+        response = {
+                "code": code,
+                "command": " ".join(command)
+            }
+        if code == 0:
+            response["remotes"] = [r.strip() for r in output.splitlines()]
+        else:
+            response["message"] = error
+
+        return response
+
+    async def ensure_gitignore(self, top_repo_path):
+        """Handle call to ensure .gitignore file exists and the
+        next append will be on a new line (this means an empty file
+        or a file ending with \n).
+
+        top_repo_path: str
+            Top Git repository path
+        """
+        try:
+            gitignore = pathlib.Path(top_repo_path) / ".gitignore"
+            if not gitignore.exists():
+                gitignore.touch()
+            elif gitignore.stat().st_size > 0:
+                content = gitignore.read_text()
+                if (content[-1] != "\n"):
+                    with gitignore.open("a") as f:
+                        f.write('\n')
+        except BaseException as error:
+            return {"code": -1, "message": str(error)}
+        return {"code": 0}
+
+    async def ignore(self, top_repo_path, file_path):
+        """Handle call to add an entry in .gitignore.
+
+        top_repo_path: str
+            Top Git repository path
+        file_path: str
+            The path of the file in .gitignore
+        """
+        try:
+            res = await self.ensure_gitignore(top_repo_path)
+            if res["code"] != 0:
+                return res
+            gitignore = pathlib.Path(top_repo_path) / ".gitignore"
+            with gitignore.open("a") as f:
+                f.write(file_path + "\n")
+        except BaseException as error:
+            return {"code": -1, "message": str(error)}
+        return {"code": 0}
+
+    async def version(self):
+        """Return the Git command version.
+
+        If an error occurs, return None.
+        """
+        command = ["git", "--version"]
+        code, output, _ = await execute(command, cwd=os.curdir)
+        if code == 0:
+            version = GIT_VERSION_REGEX.match(output)
+            if version is not None:
+                return version.group('version')
+
+        return None
+
+    async def tags(self, current_path):
+        """List all tags of the git repository.
+
+        current_path: str
+            Git path repository
+        """
+        command = ["git", "tag", "--list"]
+        code, output, error = await execute(command, cwd=os.path.join(self.root_dir, current_path))
+        if code != 0:
+            return {"code": code, "command": " ".join(command), "message": error}
+        tags = [tag for tag in output.split("\n") if len(tag) > 0]
+        return {"code": code, "tags": tags}
+
+    async def tag_checkout(self, current_path, tag):
+        """Checkout the git repository at a given tag.
+
+        current_path: str
+            Git path repository
+        tag : str
+            Tag to checkout
+        """
+        command = ["git", "checkout", "tags/" + tag]
+        code, _, error = await execute(command, cwd=os.path.join(self.root_dir, current_path))
+        if code == 0:
+            return {"code": code, "message": "Tag {} checked out".format(tag)}
         else:
             return {
-                "code": p.returncode,
-                "command": " ".join(cmd),
-                "message": my_error.decode("utf-8").strip()
+                "code": code,
+                "command": " ".join(command),
+                "message": error,
             }

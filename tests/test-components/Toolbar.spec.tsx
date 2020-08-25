@@ -1,21 +1,25 @@
 import { refreshIcon } from '@jupyterlab/ui-components';
+import * as commands from '@lumino/commands';
 import { shallow } from 'enzyme';
 import 'jest';
 import * as React from 'react';
 import { ActionButton } from '../../src/components/ActionButton';
 import { Toolbar } from '../../src/components/Toolbar';
 import * as git from '../../src/git';
+import { CommandIDs } from '../../src/commandsAndMenu';
 import { GitExtension } from '../../src/model';
 import { pullIcon, pushIcon } from '../../src/style/icons';
-import {
-  toolbarButtonClass,
-  toolbarMenuButtonClass
-} from '../../src/style/Toolbar';
+import { toolbarMenuButtonClass } from '../../src/style/Toolbar';
 
+jest.mock('@lumino/commands');
 jest.mock('../../src/git');
 
-async function createModel() {
-  const model = new GitExtension();
+async function createModel(commands?: commands.CommandRegistry) {
+  const app = {
+    commands,
+    shell: null as any
+  };
+  const model = new GitExtension('/server/root', app as any);
 
   jest.spyOn(model, 'currentBranch', 'get').mockReturnValue({
     is_current_branch: true,
@@ -40,13 +44,6 @@ function request(url: string, method: string, request: Object | null) {
           code: 0,
           branches: [],
           current_branch: null
-        })
-      );
-      break;
-    case '/git/server_root':
-      response = new Response(
-        JSON.stringify({
-          server_root: '/foo'
         })
       );
       break;
@@ -90,6 +87,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const el = new Toolbar(props);
@@ -100,6 +98,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const el = new Toolbar(props);
@@ -110,6 +109,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const el = new Toolbar(props);
@@ -131,6 +131,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -144,6 +145,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -159,6 +161,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -172,6 +175,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -187,6 +191,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -201,10 +206,14 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
-      const button = node.find(ActionButton).last();
+      const button = node
+        .find(ActionButton)
+        .findWhere(n => n.prop('icon') === refreshIcon)
+        .first();
 
       expect(button.prop('title')).toEqual(
         'Refresh the repository to detect local and remote changes'
@@ -215,6 +224,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -228,6 +238,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -241,6 +252,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -254,6 +266,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -279,6 +292,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -291,6 +305,7 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
@@ -303,59 +318,79 @@ describe('Toolbar', () => {
 
   describe('pull changes', () => {
     let model: GitExtension;
+    let mockedExecute: any;
 
     beforeEach(async () => {
+      const mockedCommands = commands as jest.Mocked<typeof commands>;
+      mockedExecute = jest.fn();
+      mockedCommands.CommandRegistry.mockImplementation(() => {
+        return {
+          execute: mockedExecute
+        } as any;
+      });
+      const registry = new commands.CommandRegistry();
+
       const mock = git as jest.Mocked<typeof git>;
       mock.httpGitRequest.mockImplementation(request);
 
-      model = await createModel();
+      model = await createModel(registry);
     });
 
     it('should pull changes when the button to pull the latest changes is clicked', () => {
-      const spy = jest.spyOn(GitExtension.prototype, 'pull');
-
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
-      const button = node.find(`.${toolbarButtonClass}`).first();
+      const button = node
+        .find(ActionButton)
+        .findWhere(n => n.prop('icon') === pullIcon)
+        .first();
 
       button.simulate('click');
-      expect(spy).toHaveBeenCalledTimes(1);
-      expect(spy).toHaveBeenCalledWith(undefined);
-
-      spy.mockRestore();
+      expect(mockedExecute).toHaveBeenCalledTimes(1);
+      expect(mockedExecute).toHaveBeenCalledWith(CommandIDs.gitPull);
     });
   });
 
   describe('push changes', () => {
     let model: GitExtension;
+    let mockedExecute: any;
 
     beforeEach(async () => {
+      const mockedCommands = commands as jest.Mocked<typeof commands>;
+      mockedExecute = jest.fn();
+      mockedCommands.CommandRegistry.mockImplementation(() => {
+        return {
+          execute: mockedExecute
+        } as any;
+      });
+      const registry = new commands.CommandRegistry();
+
       const mock = git as jest.Mocked<typeof git>;
       mock.httpGitRequest.mockImplementation(request);
 
-      model = await createModel();
+      model = await createModel(registry);
     });
 
     it('should push changes when the button to push the latest changes is clicked', () => {
-      const spy = jest.spyOn(GitExtension.prototype, 'push');
-
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: async () => {}
       };
       const node = shallow(<Toolbar {...props} />);
-      const button = node.find(`.${toolbarButtonClass}`).at(1);
+      const button = node
+        .find(ActionButton)
+        .findWhere(n => n.prop('icon') === pushIcon)
+        .first();
 
       button.simulate('click');
-      expect(spy).toHaveBeenCalledTimes(1);
-      expect(spy).toHaveBeenCalledWith(undefined);
-
-      spy.mockRestore();
+      expect(mockedExecute).toHaveBeenCalledTimes(1);
+      expect(mockedExecute).toHaveBeenCalledWith(CommandIDs.gitPush);
     });
   });
 
@@ -375,10 +410,14 @@ describe('Toolbar', () => {
       const props = {
         model: model,
         branching: false,
+        suspend: false,
         refresh: spy
       };
       const node = shallow(<Toolbar {...props} />);
-      const button = node.find(`.${toolbarButtonClass}`).last();
+      const button = node
+        .find(ActionButton)
+        .findWhere(n => n.prop('icon') === refreshIcon)
+        .first();
 
       button.simulate('click');
       expect(spy).toHaveBeenCalledTimes(1);
